@@ -1,0 +1,1221 @@
+---
+title: "Conjoint Analysis - Studies 1 & 2"
+author: "Chano Arreguin"
+date: "11/19/2022"
+output: pdf_document
+---
+
+# STUDY 1 - Importing Data [Mate Preferences Survey]
+```{r}
+#Reading in CSV
+MateSurvey00.s1 <- read.csv("file://C:/Users/Chano/Box/FALL 2022/1st SUBMISSION/Political Niche Construction/Analysis Files/Analysis in R/study 1 - Mate Preference.csv")
+
+
+#Removing non-Respondent rows up to row 30 (i.e., preview responses)
+MateSurvey01.s1 <- MateSurvey00.s1[-1:-30,]
+
+
+#Making preference column names more readable
+colnames(MateSurvey01.s1)[21:28] <- c("1_pref", "2_pref", "3_pref", "4_pref", "5_pref", "6_pref", "7_pref", "8_pref")
+
+
+#Assigning each respondent unique id
+MateSurvey01.s1$id <- c(1:nrow(MateSurvey01.s1))
+
+
+
+
+#Getting rid of NA's 
+MateSurvey01.s1$Q10[MateSurvey01.s1$Q10 == ""] <- NA
+
+MateSurvey01.s1 <- na.omit(MateSurvey01.s1)
+
+#New data has 203 obs, which means a loss of 13 which were bots
+```
+
+
+### First look at data
+```{r}
+#Data descriptive stats
+#Partisanship
+PIDtab <- table(MateSurvey01.s1$Q23)
+knitr::kable(PIDtab)
+
+#Gender
+Gendertab <- table(MateSurvey01.s1$Q13)
+knitr::kable(Gendertab)
+
+#Age
+MateSurvey01.s1$Q14 <- as.numeric(MateSurvey01.s1$Q14)
+hist(MateSurvey01.s1$Q14, main = "Age Distribution", xlab = "Age")
+sum(MateSurvey01.s1$Q14 <40)
+127/203
+#Race
+Racetab <- table(MateSurvey01.s1$Q15)
+knitr::kable(Racetab)
+
+#Education
+Educatab <- table(MateSurvey01.s1$Q18)
+knitr::kable(Educatab)
+
+#Income
+Incometab <- table(MateSurvey01.s1$Q19)
+knitr::kable(Incometab)
+
+#Relationship Status
+Relationtab <- table(MateSurvey01.s1$Q16)
+knitr::kable(Relationtab)
+
+#Religion
+religiontab <- table(MateSurvey01.s1$Q17)
+knitr::kable(religiontab)
+#POlitical Interest
+poliinteresttable <- table(MateSurvey01.s1$Q11)
+knitr::kable(poliinteresttable)
+#Out-Party Affect
+```
+
+
+### Reshaping Data for Conjoint Analysis
+```{r, warning=FALSE}
+library(dplyr)
+library(magrittr)
+library(tidyr)
+
+#CREDIT MATTHEW GRAHAM 
+
+# Reshape the mate attributes so each mate gets its own row
+d_mate = MateSurvey01.s1 %>% select(id, starts_with("choice"))
+d_mate = d_mate %>%
+  gather(variable, value, -id) %>%
+  mutate(
+    choiceNum = gsub("[A-Za-z]|_.+", "", variable),
+    mateNum = gsub(".+(.$)", "\\1", variable),
+    attribute = gsub(".+_|.$", "", variable)
+  ) %>%
+  select(-variable) %>%
+  spread(attribute, value)
+    
+
+# Reshape the respondent's preferences so each choice gets its own row
+d_pref = MateSurvey01.s1 %>% select(id, ends_with("pref"))
+d_pref = d_pref %>%
+  gather(variable, preference, -id) %>%
+  mutate(
+    choiceNum = gsub("_pref", "", variable),
+    preference = as.numeric(gsub("Person ", "", preference))
+  ) %>% 
+  select(-variable)
+
+# Merge the attributes and preferences
+d_stack = left_join(d_mate, d_pref)
+d_stack = d_stack %>%
+  mutate(
+    Y = as.numeric(mateNum == preference)
+  )
+
+#Full Sample data
+mate_dataFull.s1 <- d_stack
+
+
+
+
+```
+
+
+
+### Preliminary Full Sample Analysis
+```{r}
+library(cregg)
+
+#Making attributes as factor and changing reference levels
+mate_dataFull.s1$attractive <- as.factor(mate_dataFull.s1$attractive)
+mate_dataFull.s1$attractive <- relevel(mate_dataFull.s1$attractive, "4/10")
+mate_dataFull.s1$attractive <- factor(mate_dataFull.s1$attractive, levels = c("4/10", "6/10", "8/10", "10/10"))
+
+mate_dataFull.s1$salary <- as.factor(mate_dataFull.s1$salary)
+mate_dataFull.s1$salary <- relevel(mate_dataFull.s1$salary, "$25,000")
+mate_dataFull.s1$salary <- factor(mate_dataFull.s1$salary, levels = c("$25,000", "$50,000", "$75,000", "$100,000"))
+
+mate_dataFull.s1$race <- as.factor(mate_dataFull.s1$race)
+mate_dataFull.s1$race <- relevel(mate_dataFull.s1$race, "White")
+mate_dataFull.s1$race <- factor(mate_dataFull.s1$race, levels = c("White", "Asian", "Black", "Hispanic"))
+
+
+mate_dataFull.s1$party <- as.factor(mate_dataFull.s1$party)
+mate_dataFull.s1$party <- relevel(mate_dataFull.s1$party, "Independent")
+mate_dataFull.s1$party <- factor(mate_dataFull.s1$party, levels = c("Independent", "Democrat", "Republican"))
+
+
+mate_dataFull.s1$interestpoli <- as.factor(mate_dataFull.s1$interestpoli)
+mate_dataFull.s1$interestpoli <- relevel(mate_dataFull.s1$interestpoli, "high")
+mate_dataFull.s1$interestpoli <- factor(mate_dataFull.s1$interestpoli, levels = c("low", "medium", "high"))
+
+
+mate_dataFull.s1$education <- as.factor(mate_dataFull.s1$education)
+mate_dataFull.s1$education <- relevel(mate_dataFull.s1$education, "Vocational Training")
+#Changing factor name 
+levels(mate_dataFull.s1$education) <- list("Vocational Training" = "Vocational Training", "Some College" = "Some College", "College Degree" = "Bachelor's College Degree", "Graduate Degree" = "Graduate Degree")
+mate_dataFull.s1$education <- factor(mate_dataFull.s1$education, levels = c("Vocational Training", "Some College", "College Degree", "Graduate Degree"))
+
+
+
+mate_dataFull.s1$personality <- as.factor(mate_dataFull.s1$personality)
+
+
+mate_dataFull.s1$religiosity <- as.factor(mate_dataFull.s1$religiosity)
+
+
+
+
+#Model 1
+Model1.s1 <- Y ~ attractive + race + education + interestpoli + party + personality + salary + religiosity
+
+
+
+# AMCE Estimation Full sample
+amces_main <- cj(mate_dataFull.s1, Model1.s1, id = ~id)
+plot(amces_main) + ggplot2::ggtitle("Mate Choice \n Full Sample") + 
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+  ggplot2::xlab("Estimated ACME") + ggplot2::ylab("Partner Attributes")
+
+
+# Marginal Means Estimation Full sample
+mm_main <- mm(mate_dataFull.s1, Model1.s1, id = ~id)
+plot(mm_main, vline = .5) + ggplot2::ggtitle("Mate Choice \n Full Sample") +
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+  ggplot2::xlab("Estimated Marginal Mean") + 
+  ggplot2::ylab("Partner Attributes")
+
+
+
+# Frequencies Full sample
+plot(cj_freqs(mate_dataFull.s1, Model1.s1, id = ~id)) + 
+  ggplot2::ggtitle("Distribution of Attribute Values \n Did Randomization Work?") + 
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+  ggplot2::xlab("Frequency") + 
+  ggplot2::ylab("Partner Attributes")
+```
+
+
+
+### Recoding Variables for Subgroup Analysis
+```{r}
+#Selecting covariates of interest
+mergeData.s1 <- select(MateSurvey01.s1, c("id", "Q11", "Q12", "Q13", "Q14",
+                                    "Q15", "Q16", "Q17", "Q18", "Q19",
+                                    "Q20", "Q21", "Q22", "Q23", "Q24",
+                                    "Q26"))
+
+#Merging Covariates of interest with Main data
+  mate_dataFull2.s1 <- left_join(mate_dataFull.s1, mergeData.s1)
+  
+  #Adding descriptive column names
+  colnames(mate_dataFull2.s1)[14:28] <- c("PoliticalInterest", "attnck", "Gender",
+                                   "Age", "Race", "RelationshipStatus", "Religiosity",
+                                   "Education", "Income","Affect2Independents", 
+                                   "Affect2Democrats", "Affect2Republicans", "PartyID2",
+                                   "Ideology", "OpenTextResponse")
+  #Creating simplified [Party ID] variable
+  mate_dataFull2.s1$PartyID <- mate_dataFull2.s1$PartyID2
+  mate_dataFull2.s1$PartyID[mate_dataFull2.s1$PartyID == "Strong Democrat"] <- "Democrat"
+  mate_dataFull2.s1$PartyID[mate_dataFull2.s1$PartyID == "Lean Democrat"] <- "Democrat"
+  mate_dataFull2.s1$PartyID[mate_dataFull2.s1$PartyID == "Strong Republican"] <- "Republican"
+  mate_dataFull2.s1$PartyID[mate_dataFull2.s1$PartyID == "Lean Republican"] <- "Republican"
+  mate_dataFull2.s1$PartyID[mate_dataFull2.s1$PartyID == "Independent/Other"] <- "Independent"
+  #Making simplified party ID variable a factor variable
+  mate_dataFull2.s1$PartyID <- factor(mate_dataFull2.s1$PartyID)
+  mate_dataFull2.s1$PartyID <- relevel(mate_dataFull2.s1$PartyID, "Independent")
+  
+  #Creating numbered [Negative affect] variable
+  mate_dataFull2.s1$Affect2Democrats[mate_dataFull2.s1$Affect2Democrats == "Very Negative"] <- "7. Very Negative"
+  mate_dataFull2.s1$Affect2Democrats[mate_dataFull2.s1$Affect2Democrats == "Negative"] <- "6. Negative"
+  mate_dataFull2.s1$Affect2Democrats[mate_dataFull2.s1$Affect2Democrats == "Somewhat Negative"] <- "5. Somewhat Negative"
+  mate_dataFull2.s1$Affect2Democrats[mate_dataFull2.s1$Affect2Democrats == "Neutral"] <- "4. Neutral"
+  mate_dataFull2.s1$Affect2Democrats[mate_dataFull2.s1$Affect2Democrats == "Somewhat Positive"] <- "3. Somewhat Positive"
+  mate_dataFull2.s1$Affect2Democrats[mate_dataFull2.s1$Affect2Democrats == "Positive"] <- "2. Positive"
+  mate_dataFull2.s1$Affect2Democrats[mate_dataFull2.s1$Affect2Democrats == "Very Positive"] <- "1. Very Positive"
+  
+  #creating Binary [Negative affect] variable
+  #Toward Democrats
+  mate_dataFull2.s1$NegativeAffect2Dem <- mate_dataFull2.s1$Affect2Democrats
+  mate_dataFull2.s1$NegativeAffect2Dem[mate_dataFull2.s1$NegativeAffect2Dem == "7. Very Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Dem[mate_dataFull2.s1$NegativeAffect2Dem == "6. Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Dem[mate_dataFull2.s1$NegativeAffect2Dem == "5. Somewhat Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Dem[mate_dataFull2.s1$NegativeAffect2Dem == "1. Very Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Dem[mate_dataFull2.s1$NegativeAffect2Dem == "2. Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Dem[mate_dataFull2.s1$NegativeAffect2Dem == "3. Somewhat Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Dem[mate_dataFull2.s1$NegativeAffect2Dem == "4. Neutral"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Dem <- factor(mate_dataFull2.s1$NegativeAffect2Dem)
+  mate_dataFull2.s1$NegativeAffect2Dem <- relevel(mate_dataFull2.s1$NegativeAffect2Dem, "No Negative Affect")
+  #Toward Republicans
+  mate_dataFull2.s1$NegativeAffect2Rep <- mate_dataFull2.s1$Affect2Republicans
+  mate_dataFull2.s1$NegativeAffect2Rep[mate_dataFull2.s1$NegativeAffect2Rep == "Very Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Rep[mate_dataFull2.s1$NegativeAffect2Rep == "Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Rep[mate_dataFull2.s1$NegativeAffect2Rep == "Somewhat Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Rep[mate_dataFull2.s1$NegativeAffect2Rep == "Very Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Rep[mate_dataFull2.s1$NegativeAffect2Rep == "Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Rep[mate_dataFull2.s1$NegativeAffect2Rep == "Somewhat Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Rep[mate_dataFull2.s1$NegativeAffect2Rep == "Neutral"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Rep <- factor(mate_dataFull2.s1$NegativeAffect2Rep)
+  mate_dataFull2.s1$NegativeAffect2Rep <- relevel(mate_dataFull2.s1$NegativeAffect2Rep, "No Negative Affect")
+  #Toward Independent
+  mate_dataFull2.s1$NegativeAffect2Ind <- mate_dataFull2.s1$Affect2Independents
+  mate_dataFull2.s1$NegativeAffect2Ind[mate_dataFull2.s1$NegativeAffect2Ind == "Very Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Ind[mate_dataFull2.s1$NegativeAffect2Ind == "Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Ind[mate_dataFull2.s1$NegativeAffect2Ind == "Somewhat Negative"] <- "Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Ind[mate_dataFull2.s1$NegativeAffect2Ind == "Very Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Ind[mate_dataFull2.s1$NegativeAffect2Ind == "Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Ind[mate_dataFull2.s1$NegativeAffect2Ind == "Somewhat Positive"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Ind[mate_dataFull2.s1$NegativeAffect2Ind == "Neutral"] <- "No Negative Affect"
+  mate_dataFull2.s1$NegativeAffect2Ind <- factor(mate_dataFull2.s1$NegativeAffect2Ind)
+  mate_dataFull2.s1$NegativeAffect2Ind <- relevel(mate_dataFull2.s1$NegativeAffect2Ind, "No Negative Affect")
+  
+  
+  
+  
+  
+  
+  
+
+  
+  
+  
+  
+```
+
+
+
+
+
+### Figure 1 & Mate Success Space
+```{r}
+library(DiagrammeR)
+
+
+#Figure 1
+grViz(diagram = "digraph {
+
+  node[shape = circle]
+  
+  graph[layout = dot, rankdir = LR]
+  
+
+'Distinctiveness'
+'Negative Affect'
+'Group Sorting'
+
+'Distinctiveness' -> 'Negative Affect' -> 'Group Sorting' -> 'Distinctiveness'
+  
+ } ")
+
+
+
+
+
+#Mate Success Space
+set.seed(2022)
+#Number of players
+N <- 10000
+#Data frame
+id <- 1:N
+sim_data <- data.frame(id)
+
+sim_data$`Mate Success` <- NA
+sim_data$`Compatibility` <- NA
+sim_data$`Out-Party Affect` <- NA
+
+for(j in 1:N){
+  sim_data$`Mate Success`[j] <- runif(1, 0, 1)
+}
+
+
+#########################################################################################################
+`Mate Success` <- NA
+dataf <- data.frame(c(1:50000), `Mate Success`)
+#Out-party Affect
+dataf$`Out-Party Affect` <- NA
+#Perceived Compatibility
+dataf$Compatibility <- NA
+
+#2nd Mate success for normalization
+dataf$MateSuccess2 <- NA
+
+
+#simulating relationship between variables
+for (i in 1:50000) {
+  #Generating affect 
+  dataf$`Out-Party Affect`[i] <- runif(1, min = -.5, max = .5)
+  #Generating compatibility
+  dataf$Compatibility[i] <- runif(1, min = 0, max = 1)
+
+  #Generating mate success with affect and compatibility
+  dataf$`Mate Success`[i] <-  dataf$`Out-Party Affect`[i] + dataf$Compatibility[i]
+  
+  #Creating a second mate success variable that is shifted so that all values are above 0 to normalize
+  dataf$MateSuccess2[i] <-  dataf$`Mate Success`[i] + 1
+}
+
+# #plotting relationship
+library('ggplot2')
+
+
+#Normalizing probability of mate success
+for (i in 1:50000) {
+  #Normalizing mate success to be between 0 and 1
+  dataf$`Mate Success`[i] <- (dataf$MateSuccess2[i] - min(dataf$MateSuccess2))/(max(dataf$MateSuccess2) - min(dataf$MateSuccess2))
+  
+  #Constraining mate success probabilities between 0 and 1, exclusive
+  if(dataf$`Mate Success`[i] == 1){
+    dataf$`Mate Success`[i] <- dataf$`Mate Success`[i] - 0.005
+  }
+  else if(dataf$`Mate Success`[i] == 0){
+    dataf$`Mate Success`[i] <- dataf$`Mate Success`[i] + 0.005
+  }
+  else{
+    dataf$`Mate Success`[i] <- dataf$`Mate Success`[i]
+  }
+  
+}
+
+plotty5 <- ggplot(data = dataf, aes(x = Compatibility, y = `Out-Party Affect`, colour = `Mate Success`)) + geom_point(size = 3)
+plotty5+scale_color_gradient(low="black", high="yellow") + ggtitle("Compatibility, Out-Party Affect, & Perceived Mate Success") + geom_abline(intercept = .5, slope = -1, color = "white")+ geom_abline(intercept = 0, slope = -1, color = "white")+ geom_abline(intercept = 1, slope = -1, color = "white")
+```
+
+
+
+
+
+
+### Partisan Analysis
+```{r}
+
+  #Estimating ACIEs and Marginal Means by Party ID##################################################################
+
+  #ACIEs 
+ acie_full.s1 <- cj(mate_dataFull2.s1, Model1.s1, id = ~id, estimate = "amce", by = ~PartyID)
+ plot(acie_full.s1) + 
+   ggplot2::facet_wrap(~BY, ncol = 3L) + 
+   ggplot2::ggtitle("Mate Choice \n Partisan Effects") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated ACIEs (choices = 3,248)") + 
+   ggplot2::ylab("Partner Attributes")
+ #Marginal Means [FIGURE 6 in MANUSCRIPT]
+ mm_full.s1 <- cj(mate_dataFull2.s1, Model1.s1, id = ~id, estimate = "mm", by = ~PartyID)
+ plot(mm_full.s1, vline = .5) + 
+   ggplot2::facet_wrap(~BY, ncol = 3L) + 
+   ggplot2::ggtitle("Mate Choice \n Partisan Effects") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated Marginal Means (choices = 3,248)") + 
+   ggplot2::ylab("Partner Attributes")
+  
+  
+  
+  
+#DEMOCRAT Sample ACIEs and MMs#######################################################################################
+ #Subsetting Democrats
+  mate_dataDems.s1 <- mate_dataFull2.s1[which(mate_dataFull2.s1$PartyID == "Democrat"),]
+  DemModel.s1 <- Y ~ attractive + race + education + interestpoli + party + personality + salary + religiosity
+  mate_dataDems.s1$party <- relevel(mate_dataDems.s1$party, "Republican")
+  acies_Dem.s1 <- cj(mate_dataDems.s1, DemModel.s1, id = ~id)
+  #PLot
+  plot(acies_Dem.s1) + 
+    ggplot2::ggtitle("Mate Choice \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 1,984)") + 
+    ggplot2::ylab("Partner Attributes")
+  #Negative affect model ACIE
+  acies_Dem2.s1 <- cj(mate_dataDems.s1, DemModel.s1, id = ~id, by = ~NegativeAffect2Rep)
+  plot(acies_Dem2.s1) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L) + 
+    ggplot2::ggtitle("Mate Choice \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 1,984)") + 
+    ggplot2::ylab("Partner Attributes")
+  #MMs
+  #Table
+  table(mate_dataDems.s1$NegativeAffect2Rep)
+
+
+#REPUBLICANS AMCIEs and MMs##############################################################################################
+  #SUbsetting Republicans
+  mate_dataRepu.s1 <- mate_dataFull2.s1[which(mate_dataFull2.s1$PartyID == "Republican"),]
+  RepModel.s1 <-  Y ~ attractive + race + education + interestpoli + party + personality + salary + religiosity
+  mate_dataRepu.s1$party <- relevel(mate_dataRepu.s1$party, "Democrat")
+  acies_Rep.s1 <- cj(mate_dataRepu.s1, RepModel.s1, id = ~id)
+  #ACIE
+  plot(acies_Rep.s1) + 
+    ggplot2::ggtitle("Mate Choice \n Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 592)") + 
+    ggplot2::ylab("Partner Attributes")
+  #Negative affect Model ACIE
+  acies_Rep2.s1 <- cj(mate_dataRepu.s1, RepModel.s1, id = ~id, by = ~NegativeAffect2Dem)
+  plot(acies_Rep2.s1) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L) + 
+    ggplot2::ggtitle("Mate Choice \n Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 592)") + 
+    ggplot2::ylab("Partner Attributes")
+  #MMs
+  #Table Negative Affect
+  table(mate_dataRepu.s1$NegativeAffect2Dem)
+
+
+  
+
+
+  
+  
+  
+#INDEPENDENT ACIEs and MMs###############################################################################################
+  mate_dataInd.s1 <- mate_dataFull2.s1[which(mate_dataFull2.s1$PartyID == "Independent"),]
+  IndModel.s1 <-  Y ~ attractive + race + education + interestpoli + party + personality + salary + religiosity
+  mate_dataInd.s1$party <- relevel(mate_dataInd.s1$party, "Independent")
+  acies_Ind.s1 <- cj(mate_dataInd.s1, IndModel.s1, id = ~id)
+  plot(acies_Ind.s1) + 
+    ggplot2::ggtitle("Mate Choice \n Independent Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 3,248)") + 
+    ggplot2::ylab("Partner Attributes")
+
+  
+  
+  
+```
+
+# MANUSCRIPTS GRAPHS
+```{r}
+library(tidyverse)        # ggplot, dplyr, and friends
+library(haven)            # Read Stata files
+library(broom)            # Convert model objects to tidy data frames
+library(cregg)            # Automatically calculate frequentist conjoint AMCEs and MMs
+library(survey)           # Panel-ish regression models
+library(scales)           # Nicer labeling functions
+library(marginaleffects)  # Calculate marginal effects
+library(broom.helpers)    # Add empty reference categories to tidy model data frames
+library(ggforce)          # For facet_col()
+library(patchwork)        # Combine ggplot plots
+library(ggthemes)
+library(extrafont)
+
+theme_nice <- function() {
+  theme_minimal() +
+    theme(panel.grid.minor = element_blank(),
+          strip.background = element_rect(fill = "grey90", color = NA))
+}
+
+# Set default theme and font stuff
+theme_set(theme_nice())
+
+
+
+
+
+
+
+#FULL by party - study 1
+plot(acie_full.s1) +
+  facet_wrap(~BY, ncol = 3L) + 
+  guides(color = "none") +
+  theme_nice() +
+  labs(title = "Mate Choice") + 
+  xlab("Average Component Interaction Effects (3,248 choices)")
+
+#FULL by party - study 1
+plot(mm_full.s1) +
+  facet_wrap(~BY, ncol = 3L) + 
+  guides(color = "none") +
+  theme_nice() +
+  labs(title = "Mate Choice") + 
+  xlab("Marginal Means (3,248 choices)")
+
+
+
+#DEM BY AFFECT - study 1
+plot(acies_Dem2.s1) +
+  facet_wrap(~BY, ncol = 2L) + 
+  guides(color = "none") +
+  theme_nice() +
+  labs(title = "Mate Choice \n(Democrat Sample)") + 
+  xlab("Average Component Interaction Effects (1,984 choices)")
+
+
+
+
+#REP BY AFFECT - study 1
+plot(acies_Rep2.s1) +
+  facet_wrap(~BY, ncol = 2L) + 
+  guides(color = "none") +
+  theme_nice() +
+  labs(title = "Mate Choice \n(Republican Sample)") + 
+  xlab("Average Component Interaction Effects (592 choices)")
+
+```
+
+
+
+
+### Additional Analysis - Gender Analysis
+```{r}
+#GENDER Analysis###################################################################################
+  mate_dataFull2.s1$Gender <- factor(mate_dataFull2.s1$Gender)
+
+  #ACIE
+  acie_gender.s1 <- cj(mate_dataFull2.s1, Model1.s1, id = ~id, estimate = "amce", by = ~Gender)
+  plot(acie_gender.s1) + ggplot2::facet_wrap(~BY, ncol = 2L) + 
+    ggplot2::ggtitle("Mate Choice \n Gender Effects") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIE") + 
+    ggplot2::ylab("Partner Attributes")
+  #Marginal Means
+  mm_gender.s1 <- cj(na.omit(mate_dataFull2.s1), Model1.s1, id = ~id, estimate = "mm", by = ~Gender)
+  plot(mm_gender.s1, vline = 0.5) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L) + 
+    ggplot2::ggtitle("Mate Choice \n Gender Effects") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated Marginal Mean") + 
+    ggplot2::ylab("Partner Attributes")
+  
+#MALES ACIEs and MMs
+  mate_dataMale.s1 <- mate_dataFull2.s1[which(mate_dataFull2.s1$Gender == "Male"),]
+  MaleModel.s1 <-  Y ~ attractive + race + education + interestpoli + party + personality + salary + religiosity
+  mate_dataMale.s1$party <- relevel(mate_dataMale.s1$party, "Independent")
+  acies_male.s1 <- cj(mate_dataMale.s1, MaleModel.s1, id = ~id)
+  #ACIE
+  plot(acies_male.s1) + 
+    ggplot2::ggtitle("Mate Choice \n Male Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIE") + 
+    ggplot2::ylab("Partner Attributes")
+  #MMs
+
+#FEMALES ACIEs and MMs
+  mate_dataFemale.s1 <- mate_dataFull2.s1[which(mate_dataFull2.s1$Gender == "Female"),]
+  FemaleModel.s1 <-  Y ~ attractive + race + education + interestpoli + party + personality + salary + religiosity
+  mate_dataFemale.s1$party <- relevel(mate_dataFemale.s1$party, "Independent")
+  acies_female.s1 <- cj(mate_dataFemale.s1, FemaleModel.s1, id = ~id)
+  #ACIEs
+  plot(acies_female.s1) + 
+    ggplot2::ggtitle("Mate Choice \n Female Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIE") + 
+    ggplot2::ylab("Partner Attributes")
+  #MMs
+
+
+
+```
+
+
+
+
+# STUDY 2 - Importing Data [Niche Preferences Survey]
+```{r}
+
+#Reading in CSV
+NicheSurvey00.s2 <- read.csv("file://C:/Users/Chano/Box/FALL 2022/1st SUBMISSION/Political Niche Construction/Analysis Files/Analysis in R/study 2 - City Preference.csv")
+
+#Removing non-Respondent rows up to row 30 (ie. preview responses)
+NicheSurvey01.s2 <- NicheSurvey00.s2[-1:-22,]
+
+
+#Making preference column names more readable
+colnames(NicheSurvey01.s2)[20] <- "1_prefmove"
+colnames(NicheSurvey01.s2)[24] <- "2_prefmove"
+colnames(NicheSurvey01.s2)[28] <- "3_prefmove"
+colnames(NicheSurvey01.s2)[32] <- "4_prefmove"
+colnames(NicheSurvey01.s2)[36] <- "5_prefmove"
+
+colnames(NicheSurvey01.s2)[21] <- "1_matesuccess"
+colnames(NicheSurvey01.s2)[25] <- "2_matesuccess"
+colnames(NicheSurvey01.s2)[29] <- "3_matesuccess"
+colnames(NicheSurvey01.s2)[33] <- "4_matesuccess"
+colnames(NicheSurvey01.s2)[37] <- "5_matesuccess"
+
+colnames(NicheSurvey01.s2)[22] <- "1_city1"
+colnames(NicheSurvey01.s2)[23] <- "1_city2"
+colnames(NicheSurvey01.s2)[26] <- "2_city1"
+colnames(NicheSurvey01.s2)[27] <- "2_city2"
+colnames(NicheSurvey01.s2)[30] <- "3_city1"
+colnames(NicheSurvey01.s2)[31] <- "3_city2"
+colnames(NicheSurvey01.s2)[34] <- "4_city1"
+colnames(NicheSurvey01.s2)[35] <- "4_city2"
+colnames(NicheSurvey01.s2)[38] <- "5_city1"
+colnames(NicheSurvey01.s2)[39] <- "6_city2"
+
+#Assigning each respondent unique id
+NicheSurvey01.s2$id <- c(1:nrow(NicheSurvey01.s2))
+
+
+
+
+#Getting rid of NA's 
+NicheSurvey01.s2$Q12[NicheSurvey01.s2$Q12 == ""] <- NA
+
+NicheSurvey01.s2 <- na.omit(NicheSurvey01.s2)
+
+#New data has 206 obs, which means a loss of 10 which were bots
+```
+
+
+### First look at data
+```{r}
+#Data descriptive stats
+#Partisanship
+PIDtab2 <- table(NicheSurvey01.s2$Q25)
+knitr::kable(PIDtab2)
+
+#Gender
+Gendertab2 <- table(NicheSurvey01.s2$Q15)
+knitr::kable(Gendertab2)
+
+#Age
+NicheSurvey01.s2$Q16 <- as.numeric(NicheSurvey01.s2$Q16)
+hist(NicheSurvey01.s2$Q16, main = "Age Distribution", xlab = "Age")
+#% of respondents less than or equal to 40 and 45
+sum(NicheSurvey01.s2$Q16 <= 40)/206
+sum(NicheSurvey01.s2$Q16 <= 45)/206
+#Race
+Racetab2 <- table(NicheSurvey01.s2$Q18)
+knitr::kable(Racetab2)
+
+#Education
+Educatab2 <- table(NicheSurvey01.s2$Q20)
+knitr::kable(Educatab2)
+
+
+#Income
+Incometab2 <- table(NicheSurvey01.s2$Q21)
+knitr::kable(Incometab2)
+
+#Relationship Status
+Relationtab2 <- table(NicheSurvey01.s2$Q19)
+knitr::kable(Relationtab2)
+
+#POlitical Interest
+poliInteresttable2 <- table(NicheSurvey01.s2$Q14)
+knitr::kable(poliInteresttable2)
+
+```
+
+
+### Reshaping Data for Conjoint Analysis
+```{r, warning=FALSE}
+library(dplyr)
+library(magrittr)
+library(tidyr)
+#CREDIT MATT GRAHAM
+
+# Reshape the mate attributes so each mate gets its own row
+d_niche = NicheSurvey01.s2 %>% select(id, starts_with("choice"))
+d_niche = d_niche %>%
+  gather(variable, value, -id) %>%
+  mutate(
+    choiceNum = gsub("[A-Za-z]|_.+", "", variable),
+    nicheNum = gsub(".+(.$)", "\\1", variable),
+    attribute = gsub(".+_|.$", "", variable)
+  ) %>%
+  select(-variable) %>%
+  spread(attribute, value)
+    
+
+# Reshape the respondent's MOVE preferences so each choice gets its own row
+d_prefmove = NicheSurvey01.s2 %>% select(id, ends_with("prefmove"))
+d_prefmove = d_prefmove %>%
+  gather(variable, preference, -id) %>%
+  mutate(
+    choiceNum = gsub("_prefmove", "", variable),
+    preference = as.numeric(gsub("City ", "", preference))
+  ) %>% 
+  select(-variable)
+
+d_matesuccess = NicheSurvey01.s2 %>% select(id, ends_with("matesuccess"))
+d_matesuccess = d_matesuccess %>%
+  gather(variable, preference2, -id) %>%
+  mutate(
+    choiceNum = gsub("_matesuccess", "", variable),
+    preference2 = as.numeric(gsub("City ", "", preference2))
+  ) %>% 
+  select(-variable)
+
+# Merge the attributes and preferences
+d_stack = left_join(d_niche, d_prefmove)
+d_stack1 = left_join(d_stack, d_matesuccess)
+d_stack1 = d_stack1 %>%
+  mutate(
+    Y_Move = as.numeric(nicheNum == preference),
+    Y_Mate = as.numeric(nicheNum == preference2)
+  )
+
+#Full Sample data
+niche_dataFull1.s2 <- d_stack1
+
+
+```
+
+
+### Preliminary Full Sample Analysis
+```{r}
+library(cregg)
+#Making attributes as factor and changing reference levels
+niche_dataFull1.s2$crime[niche_dataFull1.s2$crime == "national average"] <- "c_national average"
+niche_dataFull1.s2$crime[niche_dataFull1.s2$crime == "above national average"] <- "c_above national average"
+niche_dataFull1.s2$crime[niche_dataFull1.s2$crime == "below national average"] <- "c_below national average"
+niche_dataFull1.s2$crime <- as.factor(niche_dataFull1.s2$crime)
+niche_dataFull1.s2$crime <- relevel(niche_dataFull1.s2$crime, "c_national average")
+niche_dataFull1.s2$crime <- factor(niche_dataFull1.s2$crime, levels = c("c_below national average", "c_national average", "c_above national average"))
+
+
+
+
+
+
+niche_dataFull1.s2$distfamily <- as.factor(niche_dataFull1.s2$distfamily)
+niche_dataFull1.s2$distfamily <- relevel(niche_dataFull1.s2$distfamily, "10+ hour drive")
+niche_dataFull1.s2$distfamily <- factor(niche_dataFull1.s2$distfamily, levels = c("0-2.9 hour drive", "3-5.9 hour drive", "6-9.9 hour drive", "10+ hour drive"))
+
+
+
+
+
+
+
+niche_dataFull1.s2$housingprice[niche_dataFull1.s2$housingprice == "national average"] <- "h_national average"
+niche_dataFull1.s2$housingprice[niche_dataFull1.s2$housingprice == "above national average"] <- "h_above national average"
+niche_dataFull1.s2$housingprice[niche_dataFull1.s2$housingprice == "below national average"] <- "h_below national average"
+niche_dataFull1.s2$housingprice <- as.factor(niche_dataFull1.s2$housingprice)
+niche_dataFull1.s2$housingprice <- relevel(niche_dataFull1.s2$housingprice, "h_national average")
+niche_dataFull1.s2$housingprice <- factor(niche_dataFull1.s2$housingprice, levels = c("h_below national average", "h_national average", "h_above national average"))
+
+
+
+
+
+
+
+niche_dataFull1.s2$politics <- as.factor(niche_dataFull1.s2$politics)
+niche_dataFull1.s2$politics <- relevel(niche_dataFull1.s2$politics, "50% Republicans & 50% Democrats")
+niche_dataFull1.s2$politics <- factor(niche_dataFull1.s2$politics, levels = c("80% Republicans & 20% Democrats", "50% Republicans & 50% Democrats", "20% Republicans & 80% Democrats"))
+
+
+
+
+
+
+niche_dataFull1.s2$popsize <- as.factor(niche_dataFull1.s2$popsize)
+niche_dataFull1.s2$popsize <- relevel(niche_dataFull1.s2$popsize, "50,000")
+niche_dataFull1.s2$popsize <- factor(niche_dataFull1.s2$popsize, levels = c("50,000", "100,000", "500,000", "1,000,000"))
+
+
+niche_dataFull1.s2$weather <- as.factor(niche_dataFull1.s2$weather)
+niche_dataFull1.s2$weather <- relevel(niche_dataFull1.s2$weather, "Cloudy")
+
+
+#Models 2
+MoveModel.s2 <- Y_Move ~ crime + distfamily + housingprice + politics + popsize + weather
+
+MateModel.s2 <- Y_Mate ~ crime + distfamily + housingprice + politics + popsize + weather
+
+
+# AMCE Estimation Full sample [Moving]
+amces_nicheMove.s2 <- cj(niche_dataFull1.s2, MoveModel.s2, id = ~id)
+plot(amces_nicheMove.s2) + 
+  ggplot2::ggtitle("Move to a city for a job \n (Full Sample)") + 
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+  ggplot2::xlab("Estimated ACME") + ggplot2::ylab("City Attributes")
+# AMCE Estimation Full sample [Mate Success]
+amces_nicheSucess.s2 <- cj(niche_dataFull1.s2, MateModel.s2, id = ~id)
+plot(amces_nicheSucess.s2) + 
+  ggplot2::ggtitle("Better chance finding romantic long-term partner \n (Full sample)") + 
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+  ggplot2::xlab("Estimated ACME") + 
+  ggplot2::ylab("City Attributes")
+
+
+# Marginal Means Estimation Full sample [Moving]
+mm_nicheMove.s2 <- mm(niche_dataFull1.s2, MoveModel.s2, id = ~id)
+plot(mm_nicheMove.s2, vline = .5) + 
+  ggplot2::ggtitle("Move to a city for a job \n (Full Sample)") + 
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) +
+  ggplot2::xlab("Estimated Marginal Mean") + 
+  ggplot2::ylab("City Attributes")
+# Marginal Means Estimation Full sample [Mate Success]
+mm_nicheSuccess.s2 <- mm(niche_dataFull1.s2, MateModel.s2, id = ~id)
+plot(mm_nicheSuccess.s2, vline = .5) + 
+  ggplot2::ggtitle("Better chance finding romantic long-term partner \n (Full Sample)") + 
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+  ggplot2::xlab("Estimated Marginal Mean") + 
+  ggplot2::ylab("City Attributes")
+
+
+# Frequencies Full sample
+plot(cj_freqs(niche_dataFull1.s2, MoveModel.s2, id = ~id)) + 
+  ggplot2::ggtitle("Distribution of Attribute Values \n Did Randomization Work?") + 
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+  ggplot2::xlab("Frequency") + 
+  ggplot2::ylab("Partner Attributes")
+
+```
+
+
+### Recoding Variables for Subgroup Analysis
+```{r}
+#Selecting covariates of interest
+mergeData.s2 <- select(NicheSurvey01.s2, c("id","Q14",
+                                    "Q15", "Q16", 
+                                    "Q17", "Q18", 
+                                    "Q19", "Q20", 
+                                    "Q21", "Q22", 
+                                    "Q23", "Q24",
+                                    "Q25", "Q26",
+                                     "Q28"))
+
+#Merging Covariates of interest with Main data
+  niche_dataFull2.s2 <- left_join(niche_dataFull1.s2, mergeData.s2)
+  
+  #Adding descriptive column names
+  colnames(niche_dataFull2.s2)[15:28] <- c("PoliticalInterest", "Gender",
+                                   "Age","Attractiveness", "Race", "RelationshipStatus", "Education",
+                                   "Income","Affect2Independents", 
+                                   "Affect2Democrats", "Affect2Republicans", "PartyID2",
+                                   "Ideology", "OpenTextResponse")
+  
+  
+#Creating simplified [Party ID] variable
+  niche_dataFull2.s2$PartyID <- niche_dataFull2.s2$PartyID2
+  niche_dataFull2.s2$PartyID[niche_dataFull2.s2$PartyID == "Strong Democrat"] <- "Democrat"
+  niche_dataFull2.s2$PartyID[niche_dataFull2.s2$PartyID == "Lean Democrat"] <- "Democrat"
+  niche_dataFull2.s2$PartyID[niche_dataFull2.s2$PartyID == "Strong Republican"] <- "Republican"
+  niche_dataFull2.s2$PartyID[niche_dataFull2.s2$PartyID == "Lean Republican"] <- "Republican"
+  niche_dataFull2.s2$PartyID[niche_dataFull2.s2$PartyID == "Independent/Other"] <- "Independent"
+  #Making simplified party ID variable a factor variable
+  niche_dataFull2.s2$PartyID <- factor(niche_dataFull2.s2$PartyID)
+  niche_dataFull2.s2$PartyID <- relevel(niche_dataFull2.s2$PartyID, "Independent")
+  
+  #Creating numbered [Negative affect or No Negative Affect] variable
+  niche_dataFull2.s2$Affect2Democrats[niche_dataFull2.s2$Affect2Democrats == "Very Negative"] <- "7. Very Negative"
+  niche_dataFull2.s2$Affect2Democrats[niche_dataFull2.s2$Affect2Democrats == "Negative"] <- "6. Negative"
+  niche_dataFull2.s2$Affect2Democrats[niche_dataFull2.s2$Affect2Democrats == "Somewhat Negative"] <- "5. Somewhat Negative"
+  niche_dataFull2.s2$Affect2Democrats[niche_dataFull2.s2$Affect2Democrats == "Neutral"] <- "4. Neutral"
+  niche_dataFull2.s2$Affect2Democrats[niche_dataFull2.s2$Affect2Democrats == "Somewhat Positive"] <- "3. Somewhat Positive"
+  niche_dataFull2.s2$Affect2Democrats[niche_dataFull2.s2$Affect2Democrats == "Positive"] <- "2. Positive"
+  niche_dataFull2.s2$Affect2Democrats[niche_dataFull2.s2$Affect2Democrats == "Very Positive"] <- "1. Very Positive"
+  
+  #creating Binary [Negative affect or No Negative Affect] variable
+  #Toward Democrats
+  niche_dataFull2.s2$NegativeAffect2Dem <- niche_dataFull2.s2$Affect2Democrats
+  niche_dataFull2.s2$NegativeAffect2Dem[niche_dataFull2.s2$NegativeAffect2Dem == "7. Very Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Dem[niche_dataFull2.s2$NegativeAffect2Dem == "6. Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Dem[niche_dataFull2.s2$NegativeAffect2Dem == "5. Somewhat Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Dem[niche_dataFull2.s2$NegativeAffect2Dem == "1. Very Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Dem[niche_dataFull2.s2$NegativeAffect2Dem == "2. Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Dem[niche_dataFull2.s2$NegativeAffect2Dem == "3. Somewhat Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Dem[niche_dataFull2.s2$NegativeAffect2Dem == "4. Neutral"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Dem <- factor(niche_dataFull2.s2$NegativeAffect2Dem)
+  niche_dataFull2.s2$NegativeAffect2Dem <- relevel(niche_dataFull2.s2$NegativeAffect2Dem, "No Negative Affect")
+  #Toward Republicans
+  niche_dataFull2.s2$NegativeAffect2Rep <- niche_dataFull2.s2$Affect2Republicans
+  niche_dataFull2.s2$NegativeAffect2Rep[niche_dataFull2.s2$NegativeAffect2Rep == "Very Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Rep[niche_dataFull2.s2$NegativeAffect2Rep == "Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Rep[niche_dataFull2.s2$NegativeAffect2Rep == "Somewhat Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Rep[niche_dataFull2.s2$NegativeAffect2Rep == "Very Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Rep[niche_dataFull2.s2$NegativeAffect2Rep == "Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Rep[niche_dataFull2.s2$NegativeAffect2Rep == "Somewhat Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Rep[niche_dataFull2.s2$NegativeAffect2Rep == "Neutral"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Rep <- factor(niche_dataFull2.s2$NegativeAffect2Rep)
+  niche_dataFull2.s2$NegativeAffect2Rep <- relevel(niche_dataFull2.s2$NegativeAffect2Rep, "No Negative Affect")
+  #Toward Independent
+  niche_dataFull2.s2$NegativeAffect2Ind <- niche_dataFull2.s2$Affect2Independents
+  niche_dataFull2.s2$NegativeAffect2Ind[niche_dataFull2.s2$NegativeAffect2Ind == "Very Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Ind[niche_dataFull2.s2$NegativeAffect2Ind == "Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Ind[niche_dataFull2.s2$NegativeAffect2Ind == "Somewhat Negative"] <- "Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Ind[niche_dataFull2.s2$NegativeAffect2Ind == "Very Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Ind[niche_dataFull2.s2$NegativeAffect2Ind == "Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Ind[niche_dataFull2.s2$NegativeAffect2Ind == "Somewhat Positive"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Ind[niche_dataFull2.s2$NegativeAffect2Ind == "Neutral"] <- "No Negative Affect"
+  niche_dataFull2.s2$NegativeAffect2Ind <- factor(niche_dataFull2.s2$NegativeAffect2Ind)
+  niche_dataFull2.s2$NegativeAffect2Ind <- relevel(niche_dataFull2.s2$NegativeAffect2Ind, "No Negative Affect")
+  
+```
+
+
+
+
+### Main Analysis - Full and Partisan Analysis
+```{r}
+  #Estimating ACIEs and Marginal Means by Party ID##################################################
+library(cregg)
+  #ACIEs [Move]
+niche_dataFull2.s2$politics <- relevel(niche_dataFull2.s2$politics, "50% Republicans & 50% Democrats")
+ acie_fullNicheMove.s2 <- cj(niche_dataFull2.s2, MoveModel.s2, id = ~id, estimate = "amce", by = ~PartyID)
+ plot(acie_fullNicheMove.s2) + 
+   ggplot2::facet_wrap(~BY, ncol = 3L) + 
+   ggplot2::ggtitle("Move to a city for a job \n Full Sample") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated ACIEs (choices = 2,060)") + 
+   ggplot2::ylab("City Attributes")
+   #ACIEs [Mate Success]
+ acie_fullNicheMate.s2 <- cj(niche_dataFull2.s2, MateModel.s2, id = ~id, estimate = "amce", by = ~PartyID)
+ plot(acie_fullNicheMate.s2) + 
+   ggplot2::facet_wrap(~BY, ncol = 3L) + 
+   ggplot2::ggtitle("Better chance finding romantic long-term partner \n Full Sample") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated ACIEs (choices = 2,060)") + 
+   ggplot2::ylab("City Attributes")
+ #Marginal Means [Move]
+ mm_fullnicheMove.s2 <- cj(niche_dataFull2.s2, MoveModel.s2, id = ~id, estimate = "mm", by = ~PartyID)
+ plot(mm_fullnicheMove.s2, vline = .5) + 
+   ggplot2::facet_wrap(~BY, ncol = 3L) + 
+   ggplot2::ggtitle("Move to a city for a job \n Full Sample") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated Marginal Means (choices = 2,060)") + 
+   ggplot2::ylab("City Attributes")
+  #Marginal Means [Mate Success]
+ mm_fullNicheMate.s2 <- cj(niche_dataFull2.s2, MateModel.s2, id = ~id, estimate = "mm", by = ~PartyID)
+ plot(mm_fullNicheMate.s2, vline = .5) + 
+   ggplot2::facet_wrap(~BY, ncol = 3L) + 
+   ggplot2::ggtitle("Better chance finding romantic long-term partner \n Full Sample") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated Marginal Means (choices = 2,060)") + 
+   ggplot2::ylab("City Attributes")
+ 
+ 
+ 
+ #DEMOCRAT Sample ACIEs and MMs################################################################
+  niche_dataDems.s2 <- niche_dataFull2.s2[which(niche_dataFull2.s2$PartyID == "Democrat"),]
+  niche_dataDems.s2$politics <- relevel(niche_dataDems.s2$politics, "20% Republicans & 80% Democrats")
+  #ACIE [Moving]
+  acies_DemNicheMove.s2 <- cj(niche_dataDems.s2, MoveModel.s2, id = ~id)
+  plot(acies_DemNicheMove.s2) + 
+    ggplot2::ggtitle("Move to a city for a job \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 1,200)") + 
+    ggplot2::ylab("City Attributes")
+  #Negative affect model ACIE [Moving]
+  acies_DemNicheMovebyAffect.s2 <- cj(niche_dataDems.s2, MoveModel.s2, id = ~id, by = ~NegativeAffect2Rep)
+  plot(acies_DemNicheMovebyAffect.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L) + 
+    ggplot2::ggtitle("Move to a city for a job \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 1,200)") + 
+    ggplot2::ylab("City Attributes")
+  #ACIE [Mate Success]
+  acies_DemNicheMatebyAffect.s2 <- cj(niche_dataDems.s2, MateModel.s2, id = ~id)
+  plot(acies_DemNicheMatebyAffect.s2) + 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 1,200)") + 
+    ggplot2::ylab("City Attributes")
+  #Negative affect model ACIE [Mate Success]
+  acies_DemNicheMatebyAffect.s2 <- cj(niche_dataDems.s2, MateModel.s2, id = ~id, by = ~NegativeAffect2Rep)
+  plot(acies_DemNicheMatebyAffect.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L) + 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 1,200)") + 
+    ggplot2::ylab("City Attributes")
+  #Table
+  table(niche_dataDems.s2$NegativeAffect2Rep)
+
+
+#REPUBLICANS AMCIEs and MMs########################################################################
+  niche_dataRepu.s2 <- niche_dataFull2.s2[which(niche_dataFull2.s2$PartyID == "Republican"),]
+  niche_dataRepu.s2$politics <- relevel(niche_dataRepu.s2$politics, "80% Republicans & 20% Democrats")
+  #ACIE [Moving]
+  acies_RepNicheMove.s2 <- cj(niche_dataRepu.s2, MoveModel.s2, id = ~id)
+  plot(acies_RepNicheMove.s2) + 
+    ggplot2::ggtitle("Move to a city for a job \n Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 420)") + 
+    ggplot2::ylab("City Attributes")
+  #Negative affect Model ACIE [Moving]
+  acies_RepNicheMove2.s2 <- cj(niche_dataRepu.s2, MoveModel.s2, id = ~id, by = ~NegativeAffect2Dem)
+  plot(acies_RepNicheMove2.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L)+ 
+    ggplot2::ggtitle("Move to a city for a job \n Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 420)") + 
+    ggplot2::ylab("City Attributes")
+    #ACIE [Mate Success]
+  acies_RepNicheMate.s2 <- cj(niche_dataRepu.s2, MateModel.s2, id = ~id)
+  plot(acies_RepNicheMate.s2) + 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 420)") + 
+    ggplot2::ylab("City Attributes")
+  #Negative affect Model ACIE [Mate Success]
+  acies_RepNicheMatebyAffect.s2 <- cj(niche_dataRepu.s2, MateModel.s2, id = ~id, by = ~NegativeAffect2Dem)
+  plot(acies_RepNicheMatebyAffect.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L)+ 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n  Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIEs (choices = 420)") + 
+    ggplot2::ylab("City Attributes")
+  #Table Negative Affect
+  table(niche_dataRepu.s2$NegativeAffect2Dem)
+```
+
+#MANUSCRIPT GRAPHS
+```{r}
+
+
+#FULL by party - study 2
+plot(acie_fullNicheMate.s2) +
+  facet_wrap(~BY, ncol = 3L) + 
+  guides(color = "none") +
+  theme_nice() +
+  labs(title = "Better Chance Finding Long-term Romantic Partner") + 
+  xlab("Average Component Interaction Effects (2,060 choices)")
+
+
+
+#DEM BY AFFECT - study 2
+plot(acies_DemNicheMatebyAffect.s2) +
+  facet_wrap(~BY, ncol = 2L) + 
+  guides(color = "none") +
+  theme_nice() +
+  labs(title = "Better Chance Finding Long-term Romantic Partner \n(Democrat Sample)") + 
+  xlab("Average Component Interaction Effects (1,200 choices)")
+
+
+#REP BY AFFECT - study 2
+  plot(acies_RepNicheMatebyAffect.s2) +
+  facet_wrap(~BY, ncol = 2L) + 
+  guides(color = "none") +
+  theme_nice() +
+  labs(title = "Better Chance Finding Long-term Romantic Partner \n(Republican Sample)") + 
+  xlab("Average Component Interaction Effects (420 choices)")
+  
+
+```
+
+
+
+
+
+
+### Additional Analysis - Relationship status and political interest Analysis
+```{r}
+head(niche_dataFull2.s2)
+
+#Creating binary relationship status variable
+
+niche_dataFull2.s2$RelationshipStatus2 <- niche_dataFull2.s2$RelationshipStatus
+table(niche_dataFull2.s2$RelationshipStatus2)
+niche_dataFull2.s2$RelationshipStatus2[niche_dataFull2.s2$RelationshipStatus2 == "Been single for more than 2 years"] <- "Single"
+niche_dataFull2.s2$RelationshipStatus2[niche_dataFull2.s2$RelationshipStatus2 == "Been single for under 1 year"] <- "Single"
+niche_dataFull2.s2$RelationshipStatus2[niche_dataFull2.s2$RelationshipStatus2 == "Been single for under 2 years"] <- "Single"
+niche_dataFull2.s2$RelationshipStatus2[niche_dataFull2.s2$RelationshipStatus2 == "In a relationship"] <- "Not Single"
+niche_dataFull2.s2$RelationshipStatus2[niche_dataFull2.s2$RelationshipStatus2 == "Married"] <- "Not Single"
+niche_dataFull2.s2$RelationshipStatus2[niche_dataFull2.s2$RelationshipStatus2 == "Prefer not to say"] <- "Single"
+
+#creating new poli interest variable, collpasing 4 levels in 3
+niche_dataFull2.s2$PoliticalInterest2 <- niche_dataFull2.s2$PoliticalInterest
+table(niche_dataFull2.s2$PoliticalInterest2)
+niche_dataFull2.s2$PoliticalInterest2[niche_dataFull2.s2$PoliticalInterest2 == "Not At All Interested"] <- "Low"
+niche_dataFull2.s2$PoliticalInterest2[niche_dataFull2.s2$PoliticalInterest2 == "Not Very Interested"] <- "Low"
+niche_dataFull2.s2$PoliticalInterest2[niche_dataFull2.s2$PoliticalInterest2 == "Somewhat Interested"] <- "Medium"
+niche_dataFull2.s2$PoliticalInterest2[niche_dataFull2.s2$PoliticalInterest2 == "Very Interested"] <- "High"
+
+#Dem analysis
+#relationship status
+niche_dataDems.s2 <- niche_dataFull2.s2[which(niche_dataFull2.s2$PartyID == "Democrat"),]
+table(niche_dataDems.s2$RelationshipStatus2)
+niche_dataDems.s2$RelationshipStatus2 <- factor(niche_dataDems.s2$RelationshipStatus2)
+niche_dataDems.s2$politics <- relevel(niche_dataDems.s2$politics, "80% Republicans & 20% Democrats")
+
+acies_DemNicheMatebyRela.s2 <- cj(niche_dataDems.s2, MateModel.s2, id = ~id, by = ~RelationshipStatus2)
+  plot(acies_DemNicheMatebyRela.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L)+ 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIE by Relationship Status") + 
+    ggplot2::ylab("City Attributes")
+  
+#political interest
+table(niche_dataDems.s2$PoliticalInterest2)
+niche_dataDems.s2$PoliticalInterest2 <- factor(niche_dataDems.s2$PoliticalInterest2)
+niche_dataDems.s2$PoliticalInterest2 <- relevel(niche_dataDems.s2$PoliticalInterest2, "Low")
+
+acies_DemNicheMatebyInte.s2 <- cj(niche_dataDems.s2, MateModel.s2, id = ~id, by = ~PoliticalInterest2)
+  plot(acies_DemNicheMatebyInte.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 3L)+ 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n Democrat Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIE by Political Interest") + 
+    ggplot2::ylab("City Attributes")
+  
+
+#Rep analysis
+#relationship status
+niche_dataRepu.s2 <- niche_dataFull2.s2[which(niche_dataFull2.s2$PartyID == "Republican"),]
+table(niche_dataRepu.s2$RelationshipStatus2)
+niche_dataRepu.s2$RelationshipStatus2 <- factor(niche_dataRepu.s2$RelationshipStatus2)
+niche_dataRepu.s2$politics <- relevel(niche_dataRepu.s2$politics, "20% Republicans & 80% Democrats")
+
+acies_RepNicheMatebyRela.s2 <- cj(niche_dataRepu.s2, MateModel.s2, id = ~id, by = ~RelationshipStatus2)
+  plot(acies_RepNicheMatebyRela.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 2L)+ 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIE by Relationship Status") + 
+    ggplot2::ylab("City Attributes")
+  
+#political interest
+niche_dataRepu.s2$PoliticalInterest2 <- factor(niche_dataRepu.s2$PoliticalInterest2)
+niche_dataRepu.s2$PoliticalInterest2 <- relevel(niche_dataRepu.s2$PoliticalInterest2, "Low")
+table(niche_dataRepu.s2$PoliticalInterest2)
+
+acies_RepNicheMatebyInte.s2 <- cj(niche_dataRepu.s2, MateModel.s2, id = ~id, by = ~PoliticalInterest2)
+  plot(acies_RepNicheMatebyInte.s2) + 
+    ggplot2::facet_wrap(~BY, ncol = 3L)+ 
+    ggplot2::ggtitle("Better chance finding romantic long-term partner \n Republican Sample") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+    ggplot2::xlab("Estimated ACIE by Political Interest") + 
+    ggplot2::ylab("City Attributes")  
+
+```
+
+
+###  Additional Analysis - By Gender
+```{r}
+
+niche_dataFull2.s2$Gender <- as.factor(niche_dataFull2.s2$Gender)
+
+ acie_fullNicheMatebyGender.s2 <- cj(niche_dataFull2.s2, MateModel.s2, id = ~id, estimate = "amce", by = ~Gender)
+ plot(acie_fullNicheMatebyGender.s2) + 
+   ggplot2::facet_wrap(~BY, ncol = 2L) + 
+   ggplot2::ggtitle("Better chance finding romantic long-term partner \n By Gender") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated ACIE") + 
+   ggplot2::ylab("City Attributes")
+ 
+ 
+ 
+ acie_fullNicheMovebyGender.s2 <- cj(niche_dataFull2.s2, MoveModel.s2, id = ~id, estimate = "amce", by = ~Gender)
+ plot(acie_fullNicheMovebyGender.s2) + 
+   ggplot2::facet_wrap(~BY, ncol = 2L) + 
+   ggplot2::ggtitle("Move for a Job \n By Gender") + 
+   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) + 
+   ggplot2::xlab("Estimated ACIE") + 
+   ggplot2::ylab("City Attributes") 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
